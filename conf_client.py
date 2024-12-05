@@ -54,8 +54,8 @@ class ConferenceClient:
         if conference_id in self.in_conference:
             try:
                 self.writer.write(f'quit {conference_id}'.encode())
-                await self.writer.drain()
-                response = await self.reader.read(100)
+                # await self.writer.drain()
+                # response = await self.reader.read(100)
                 print(response.decode())
                 self.in_conference.remove(conference_id)
                 if len(self.in_conference) == 0:
