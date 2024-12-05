@@ -158,6 +158,9 @@ class MainServer:
                     writer.write(b'Cancel this conference beacause no one still in now')
                     await writer.drain()
                     del self.conference_conns[conference_id]
+                else:
+                    writer.write(b'Still have people in this conference')
+                    await writer.drain()
             elif message.startswith('cancel'):
                 conference_id = int(message.split()[1])
                 await self.handle_cancel_conference(conference_id)
