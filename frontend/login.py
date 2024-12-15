@@ -1,14 +1,16 @@
 import sys
 import requests
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLineEdit, QPushButton, QLabel, QHBoxLayout, \
-    QMainWindow, QListWidget
+import hashlib
+
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLineEdit, QPushButton, QLabel, QHBoxLayout, QMessageBox
+import sys
+import requests
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLineEdit, QPushButton, QLabel, QHBoxLayout
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon
-import websocket
-import json
 
 
-class LoginWindow(QWidget):
+class App(QWidget):
     def __init__(self):
         super().__init__()
 
@@ -198,194 +200,98 @@ class LoginWindow(QWidget):
         else:
             self.password_input.setEchoMode(QLineEdit.Password)  # 隐藏密码
             self.show_password_button.setIcon(QIcon("frontend/img/pswd_hide.png"))  # 更新按钮文本为 "Show"
+    # def __init__(self):
+    #     super().__init__()
+    #     self.setWindowTitle("Login/Register App")
+    #     self.setGeometry(400, 200, 300, 200)
+    #
+    #     self.initUI()
 
-    def login(self):
-        username = self.username_input.text()
-        password = self.password_input.text()
-        payload = {
-            "action": "login",
-            "username": username,
-            "password": password
-        }
-
-        response = requests.post("https://server_ip:8888/login", json=payload)
-
-        if response.status_code == 200:
-            result = response.json()
-            if result.get("status") == "success":
-                self.message_label.setText("Login successful!")
-                token = result.get("token")
-                self.store_token(token)
-                self.connect_websocket(token)
-
-                # 联动进入主界面
-                self.open_main_window()
-            else:
-                self.message_label.setText(f"Login failed: {result.get('message')}")
-        else:
-            self.message_label.setText("Login failed: Unable to connect to server.")
-
-    def open_main_window(self):
-        # 创建并显示主界面
-        self.main_window = MainWindow()  # 这里使用导入的MainWindow类
-        self.main_window.show()
-
-        # 关闭登录界面
-        self.close()
+    # def initUI(self):
+    #     # 主布局
+    #     main_layout = QVBoxLayout()
+    #
+    #     # 登录框部分
+    #     self.username_label = QLabel("Username:")
+    #     self.username_input = QLineEdit()
+    #
+    #     self.password_label = QLabel("Password:")
+    #     self.password_input = QLineEdit()
+    #     self.password_input.setEchoMode(QLineEdit.Password)  # 密码输入时隐藏字符
+    #
+    #     # 注册和登录按钮
+    #     self.login_button = QPushButton("Login")
+    #     self.register_button = QPushButton("Register")
+    #     self.exit_button = QPushButton("Exit")
+    #
+    #     # 连接按钮到方法
+    #     self.login_button.clicked.connect(self.login)
+    #     self.register_button.clicked.connect(self.register)
+    #     self.exit_button.clicked.connect(self.exit_app)
+    #
+    #     # 布局添加控件
+    #     main_layout.addWidget(self.username_label)
+    #     main_layout.addWidget(self.username_input)
+    #     main_layout.addWidget(self.password_label)
+    #     main_layout.addWidget(self.password_input)
+    #
+    #     button_layout = QHBoxLayout()
+    #     button_layout.addWidget(self.login_button)
+    #     button_layout.addWidget(self.register_button)
+    #     button_layout.addWidget(self.exit_button)
+    #
+    #     main_layout.addLayout(button_layout)
+    #
+    #     self.setLayout(main_layout)
 
     def register(self):
+        url = 'http://127.0.0.1:8888/register'
         username = self.username_input.text()
         password = self.password_input.text()
-        payload = {
+        password = hashlib.sha256(password.encode()).hexdigest()
+        data = {
             "action": "register",
             "username": username,
             "password": password
         }
-
-        response = requests.post("https://server_ip:8888/register", json=payload)
-
-        if response.status_code == 200:
-            result = response.json()
-            if result.get("status") == "success":
-                self.message_label.setText("Registration successful!")
+        try:
+            print(f"Registering user: {data}")
+            response = requests.post(url, json=data)
+            if response.status_code == 200:
+                QMessageBox.information(self, 'Success', 'Registration successful!')
             else:
-                self.message_label.setText(f"Registration failed: {result.get('message')}")
-        else:
-            self.message_label.setText("Registration failed: Unable to connect to server.")
+                QMessageBox.warning(self, 'Error', f'Registration failed: {response.status_code} {response.text}')
+        except requests.RequestException as e:
+            QMessageBox.critical(self, 'Error', f'An error occurred: {e}')
 
-    def store_token(self, token):
-        with open("token.txt", "w") as token_file:
-            token_file.write(token)
+    def login(self):
+        url = 'http://127.0.0.1:8888/login'
+        username = self.username_input.text()
+        password = self.password_input.text()
+        password = hashlib.sha256(password.encode()).hexdigest()
+        data = {
+            "action": "login",
+            "username": username,
+            "password": password
+        }
+        try:
+            print(f"Registering user: {data}")
+            response = requests.post(url, json=data)
+            if response.status_code == 200:
+                QMessageBox.information(self, 'Success', 'Login successful!')
+                print("Token:", response.json())
+            else:
+                QMessageBox.warning(self, 'Error', f'Login failed: {response.status_code} {response.text}')
+        except requests.RequestException as e:
+            QMessageBox.critical(self, 'Error', f'An error occurred: {e}')
 
-    def connect_websocket(self, token):
-        def on_message(ws, message):
-            print(f"Received message: {message}")
-
-        def on_error(ws, error):
-            print(f"Error: {error}")
-
-        def on_close(ws):
-            print("Closed WebSocket connection")
-
-        def on_open(ws):
-            print("WebSocket connection established")
-            ws.send(json.dumps({"action": "authenticate", "token": token}))
-
-        ws_url = "wss://server_ip:8888/websocket"
-        ws = websocket.WebSocketApp(ws_url, on_message=on_message, on_error=on_error, on_close=on_close)
-        ws.on_open = on_open
-        ws.run_forever()
-
-
-class MainWindow(QWidget):
-    class MeetingApp(QWidget):
-        def __init__(self):
-            super().__init__()
-
-            self.setWindowTitle("Main")
-            self.setWindowIcon(QIcon("frontend/img/icon.png"))
-            self.setGeometry(900, 500, 500, 500)
-
-            # 主布局（左右分栏）
-            main_layout = QHBoxLayout()
-
-            # 左栏布局：创建会议和加入会议按钮
-            left_widget = QWidget()
-            left_layout = QVBoxLayout()
-
-            self.create_meeting_button = QPushButton("Create Meeting")
-            self.create_meeting_button.setStyleSheet("""
-                QPushButton {
-                    font-family: Arial, sans-serif;
-                    font-size: 32px;
-                    background-color: #994c00;
-                    color: white;
-                    border-radius: 10px;
-                    padding: 15px;
-                }
-                QPushButton:hover {
-                    background-color: #4c5caf;
-                }
-            """)
-            self.create_meeting_button.clicked.connect(self.create_meeting)
-
-            self.join_meeting_button = QPushButton("Join Meeting")
-            self.join_meeting_button.setStyleSheet("""
-                QPushButton {
-                    font-family: Arial, sans-serif;
-                    font-size: 32px;
-                    background-color: #994c00;
-                    color: white;
-                    border-radius: 10px;
-                    padding: 15px;
-                }
-                QPushButton:hover {
-                    background-color: #4c5caf;
-                }
-            """)
-            self.join_meeting_button.clicked.connect(self.join_meeting)
-
-            left_layout.addWidget(self.create_meeting_button)
-            left_layout.addWidget(self.join_meeting_button)
-
-            left_widget.setLayout(left_layout)
-
-            # 右栏布局：显示正在进行的会议列表
-            right_widget = QWidget()
-            right_layout = QVBoxLayout()
-
-            self.meeting_list_label = QLabel("Ongoing Meetings")
-            self.meeting_list_label.setStyleSheet("""
-                font-family: Arial, sans-serif;
-                font-size: 32px;
-                font-weight: bold;
-                color: #994c00;
-            """)
-            self.meeting_list_label.setAlignment(Qt.AlignCenter)
-
-            self.meeting_list_widget = QListWidget()
-            self.meeting_list_widget.setStyleSheet("""
-                QListWidget {
-                    font-family: Arial, sans-serif;
-                    font-size: 20px;
-                    background-color: #f0f0f0;
-                    border: 1px solid #ccc;
-                    border-radius: 5px;
-                    padding: 10px;
-                }
-            """)
-
-            right_layout.addWidget(self.meeting_list_label)
-            right_layout.addWidget(self.meeting_list_widget)
-
-            right_widget.setLayout(right_layout)
-
-            # 添加左右栏到主布局
-            main_layout.addWidget(left_widget)
-            main_layout.addWidget(right_widget)
-
-            # 设置主布局
-            self.setLayout(main_layout)
-
-        def create_meeting(self):
-            # 模拟创建会议，展示在右栏的会议列表中
-            meeting_name = "Meeting " + str(len(self.meeting_list_widget.items()) + 1)
-            self.meeting_list_widget.addItem(meeting_name)
-            print(f"Created {meeting_name}")
-
-        def join_meeting(self):
-            # 模拟加入会议，展示在右栏的会议列表中
-            meeting_name = "Meeting " + str(len(self.meeting_list_widget.items()) + 1)
-            self.meeting_list_widget.addItem(meeting_name)
-            print(f"Joined {meeting_name}")
-
-
-def main():
-    app = QApplication(sys.argv)
-    window = LoginWindow()
-    window.show()
-    sys.exit(app.exec_())
+    def exit_app(self):
+        print("Exiting application...")
+        self.close()
 
 
 if __name__ == "__main__":
-    main()
+    app = QApplication(sys.argv)
+    window = App()
+    window.show()
+    sys.exit(app.exec_())
