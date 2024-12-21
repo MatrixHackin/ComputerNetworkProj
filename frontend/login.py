@@ -9,6 +9,7 @@ from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLineEdit, QPush
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon
 
+from config import *
 
 class App(QWidget):
     def __init__(self):
@@ -202,7 +203,7 @@ class App(QWidget):
             self.show_password_button.setIcon(QIcon("frontend/img/pswd_hide.png"))  # 更新按钮文本为 "Show"
 
     def register(self):
-        url = 'http://127.0.0.1:8888/register'
+        url = f'http://{SERVER_IP}:{MAIN_SERVER_PORT}/register'
         username = self.username_input.text()
         password = self.password_input.text()
         password = hashlib.sha256(password.encode()).hexdigest()
@@ -223,7 +224,7 @@ class App(QWidget):
             QMessageBox.critical(self, 'Error', f'An error occurred: {e}')
 
     def login(self):
-        url = 'http://127.0.0.1:8888/login'
+        url = f'http://{SERVER_IP}:{MAIN_SERVER_PORT}/login'
         username = self.username_input.text()
         password = self.password_input.text()
         password = hashlib.sha256(password.encode()).hexdigest()

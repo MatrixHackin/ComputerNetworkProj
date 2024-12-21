@@ -196,7 +196,7 @@ class MainServer:
                 "message": "Join conference successfully."}
 
     def start(slef):
-        uvicorn.run(app, host="127.0.0.1", port=8888)
+        uvicorn.run(app, host=SERVER_IP, port=MAIN_SERVER_PORT)
 
 
     # async def handle_quit_conference(self, conference_id, writer):

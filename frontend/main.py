@@ -9,6 +9,7 @@ import json
 
 from PyQt5.QtWidgets import QDialog, QLineEdit, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QMessageBox
 
+from config import *
 
 # 创建会议的弹窗
 class CreateMeetingDialog(QDialog):
@@ -112,7 +113,7 @@ class CreateMeetingDialog(QDialog):
             "Authorization": "Bearer YOUR_TOKEN"
         }
 
-        response = requests.post("http://127.0.0.1:8888/user/create-meeting", json=payload, headers=headers)
+        response = requests.post(f"http://{SERVER_IP}:{MAIN_SERVER_PORT}/user/create-meeting", json=payload, headers=headers)
 
         if response.status_code == 200:
             result = response.json()
@@ -156,7 +157,7 @@ class CreateMeetingDialog(QDialog):
             "Authorization": "Bearer YOUR_TOKEN"
         }
 
-        response = requests.post("http://127.0.0.1:8888/user/join-meeting", json=payload, headers=headers)
+        response = requests.post(f"http://{SERVER_IP}:{MAIN_SERVER_PORT}/user/join-meeting", json=payload, headers=headers)
 
         if response.status_code == 200:
             result = response.json()
@@ -273,7 +274,7 @@ class JoinMeetingDialog(QDialog):
             "Authorization": "Bearer YOUR_TOKEN"
         }
 
-        response = requests.post("http://127.0.0.1:8888/user/join-meeting", json=payload, headers=headers)
+        response = requests.post(f"http://{SERVER_IP}:{MAIN_SERVER_PORT}/user/join-meeting", json=payload, headers=headers)
 
         if response.status_code == 200:
             result = response.json()
