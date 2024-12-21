@@ -1,5 +1,6 @@
 import asyncio
 from util import *
+from manage_db import manage_db
 
 class ConferenceServer:
     def __init__(self):
@@ -88,10 +89,13 @@ class ConferenceServer:
         self.conference_id = id
         await self.start_server()
 
+import datetime
 import uvicorn
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Request, Depends
 from pydantic import BaseModel
 from my_login_server import app  # 导入 FastAPI 应用实例
+from sqlalchemy import Column, Integer, String
+from sqlalchemy.orm import Session, declarative_base
 
 class Meeting(BaseModel):
     conference_id: int
@@ -103,6 +107,19 @@ conference_servers = {} # on-going ones
 meetings = [] # on-going ones
 confID_count = 0
 clients_ip = []
+# 创建数据库处理实例
+db_manager = manage_db()
+Base = declarative_base()
+
+class DBConferences(Base):
+    __tablename__ = 'conferences'
+    conference_id = Column(Integer, primary_key=True, index=True)
+    conference_name = Column(String, index=True, unique=True) 
+    host_name = Column(String, index=True)
+    password = Column(String, index=True)
+    port = Column(Integer, index=True)
+    created_at = Column(String, index=True)
+    member_num = Column(Integer, index=True)
 
 class MainServer:
     # conference_servers = {}
@@ -113,12 +130,13 @@ class MainServer:
         self.server_port = main_port
         self.main_server = None
         self.clients_info = {} #如何获取？存这儿还是直接存数据库？
+        global get_bd
         # self.meetings = []
         # self.id_count = 0
         # self.conference_servers = {}
     
     @app.post("/user/create-meeting")
-    async def create_meeting(request: Request):
+    async def create_meeting(request: Request, db: Session = Depends(db_manager.get_db)):
         # 获取请求体中的 JSON 数据
         payload = await request.json()
         # 获取请求头, 目前没有使用
@@ -138,14 +156,14 @@ class MainServer:
                         "message": "Conference already exist."}
 
         global confID_count
-        conference_id = confID_count
-        print(f'create new conference {conference_id}')
+        conf_id = confID_count ## TODO:在数据库中设置为自增？
+        print(f'create new conference {conf_id}')
         confID_count += 1
         conference_server = ConferenceServer()
 
         # 将会议添加到列表
         meetings.append({
-            "conference_id": conference_id,
+            "conference_id": conf_id,
             "conference_name": payload["conference_name"],
             "conference_password": payload["conference_password"],
             "host": payload["host"]
@@ -153,10 +171,21 @@ class MainServer:
         print('meetings now:')
         print(meetings)
 
-        conference_servers[conference_id] = conference_server
-        await conference_server.start(conference_id)
+        new_conf = DBConferences(conference_id = conf_id,
+                                conference_name = payload["conference_name"],
+                                host_name = payload["host"],  #似乎只传name
+                                password = payload["conference_password"],
+                                port = 9001,  #TODO:还是每个会有一个单独的port
+                                created_at = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f'),
+                                member_num = 0)
+        db.add(new_conf)
+        db.commit()
+        db.refresh(new_conf)
+
+        conference_servers[conf_id] = conference_server
+        await conference_server.start(conf_id)
         return {"status": "success", 
-                "conference_id": conference_id,
+                "conference_id": conf_id,
                 "port": 9001,
                 "message": "Conference created successfully."}
     

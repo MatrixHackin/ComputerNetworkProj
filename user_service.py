@@ -57,8 +57,6 @@ class UserService:
                 detail="用户名已经被占用，请换用户名",
             )
 
-
-
     @staticmethod
     def login(request : User, db: Session):
         print('enter login:'+request.username+', '+request.password)

@@ -23,14 +23,6 @@ def get_db(db: Session = Depends(db_manager.get_db)):
 # 注册接口
 @app.post("/register/")
 async def register(user: User, db: Session = Depends(get_db)):
-    # # 提取请求的 URL 和客户端信息
-    # # 获取客户端 IP
-    # client_ip = request.client.host
-    # # 获取请求的端口
-    # client_port = request.client.port
-    # # 获取请求的完整 URL
-    # url = str(request.url)
-    # print("client_ip: client_ip, client_port: client_port, url: full_url")
     return user_manager.register(user, db)
 
 

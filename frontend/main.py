@@ -11,6 +11,8 @@ from PyQt5.QtWidgets import QDialog, QLineEdit, QVBoxLayout, QLabel, QPushButton
 
 from config import *
 
+user_name = None
+
 # 创建会议的弹窗
 class CreateMeetingDialog(QDialog):
     def __init__(self):
@@ -109,7 +111,7 @@ class CreateMeetingDialog(QDialog):
         payload = {
             "conference_name": conference_name,
             "conference_password": conference_password,
-            "host": "john_doe"
+            "host": user_name
         }
 
         headers = {
@@ -313,7 +315,9 @@ class JoinMeetingDialog(QDialog):
 
 
 class MainWindow(QWidget):
-    def __init__(self):
+    def __init__(self, data = None):
+        global user_name
+        user_name = data
         super().__init__()
 
         # 设置窗口标题、图标和大小
