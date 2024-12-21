@@ -102,6 +102,9 @@ class CreateMeetingDialog(QDialog):
     def create_meeting(self):
         conference_name = self.conference_name_input.text()
         conference_password = self.conference_password_input.text()
+        if (conference_name==None) | (conference_name=='') | (conference_password==None) | (conference_password==''):
+            QMessageBox.warning(self, 'Error', 'Name or Password cannotbe null. Please enter again.')
+            return
 
         payload = {
             "conference_name": conference_name,
@@ -264,6 +267,9 @@ class JoinMeetingDialog(QDialog):
     def join_meeting(self):
         conference_name = self.conference_name_input.text()
         conference_password = self.conference_password_input.text()
+        if (conference_name==None) | (conference_name=='') | (conference_password==None) | (conference_password==''):
+            QMessageBox.warning(self, 'Error', 'Name or Password cannotbe null. Please enter again.')
+            return
 
         payload = {
             "conference_name": conference_name,

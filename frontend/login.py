@@ -206,6 +206,9 @@ class App(QWidget):
         url = f'http://{SERVER_IP}:{MAIN_SERVER_PORT}/register'
         username = self.username_input.text()
         password = self.password_input.text()
+        if (username==None) | (username=='') | (password==None) | (password==''):
+            QMessageBox.warning(self, 'Error', 'Name or Password cannotbe null. Please enter again.')
+            return
         password = hashlib.sha256(password.encode()).hexdigest()
         data = {
             "action": "register",
@@ -227,6 +230,9 @@ class App(QWidget):
         url = f'http://{SERVER_IP}:{MAIN_SERVER_PORT}/login'
         username = self.username_input.text()
         password = self.password_input.text()
+        if (username==None) | (username=='') | (password==None) | (password==''):
+            QMessageBox.warning(self, 'Error', 'Name or Password cannotbe null. Please enter again.')
+            return
         password = hashlib.sha256(password.encode()).hexdigest()
         data = {
             "action": "login",

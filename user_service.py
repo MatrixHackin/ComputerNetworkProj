@@ -61,7 +61,7 @@ class UserService:
 
     @staticmethod
     def login(request : User, db: Session):
-        print('enter login')
+        print('enter login:'+request.username+', '+request.password)
         # 检查用户是否存在
         user = db.query(DBUsers).filter(request.username == DBUsers.username, request.password == DBUsers.password).first()
         if user is None:
