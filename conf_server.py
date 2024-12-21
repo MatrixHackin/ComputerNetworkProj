@@ -89,94 +89,180 @@ class ConferenceServer:
         self.conference_id = id
         await self.start_server()
 
+import uvicorn
+from fastapi import HTTPException, Request
+from pydantic import BaseModel
+from my_login_server import app  # 导入 FastAPI 应用实例
+
+class Meeting(BaseModel):
+    conference_id: int
+    conference_name: str
+    conference_password: str
+    host: str
+
+conference_servers = {} # on-going ones
+meetings = [] # on-going ones
+confID_count = 0
 
 class MainServer:
+    # conference_servers = {}
+    # meetings = []
+
     def __init__(self, server_ip, main_port):
         self.server_ip = server_ip
         self.server_port = main_port
         self.main_server = None
-        self.conference_conns = {}  # on-going conferences
-        self.conference_servers = {} # all conferences
+        self.clients_info = {} #如何获取？存这儿还是直接存数据库？
+        # self.meetings = []
+        # self.id_count = 0
+        # self.conference_servers = {}
+    
+    @app.post("/user/create-meeting")
+    async def create_meeting(request: Request):
+        # 获取请求体中的 JSON 数据
+        payload = await request.json()
+        # 获取请求头, 目前没有使用
+        headers = request.headers
 
-    async def handle_create_conference(self):
-        conference_id = len(self.conference_servers) + 1
-        print(f"new conference id: {conference_id}")
+        # TODO：维护client IP列表？？
+        client_ip = request.client.host
+        client_port = request.client.port
+        print(client_ip)
+        print(client_port)
+        
+        print('enter create')
+        # 检查会议是否已经存在
+        for existing_meeting in meetings:
+            if existing_meeting["conference_name"] == payload["conference_name"]:
+                return {"status": "fail",
+                        "message": "Conference already exist."}
+
+        global confID_count
+        conference_id = confID_count
+        print(f'create new conference {conference_id}')
+        confID_count += 1
         conference_server = ConferenceServer()
-        self.conference_conns[conference_id] = conference_server
-        self.conference_servers[conference_id] = conference_server
+
+        # 将会议添加到列表
+        meetings.append({
+            "conference_id": conference_id,
+            "conference_name": payload["conference_name"],
+            "conference_password": payload["conference_password"],
+            "host": payload["host"]
+        })
+        print('meetings now:')
+        print(meetings)
+
+        conference_servers[conference_id] = conference_server
         await conference_server.start(conference_id)
-        return conference_id
+        return {"status": "success", 
+                "conference_id": conference_id,
+                "port": 9001,
+                "message": "Conference created successfully."}
+    
+    @app.post("/user/join-meeting")
+    async def create_meeting(request: Request):
+        # 获取请求体中的 JSON 数据
+        payload = await request.json()
+        # 获取请求头, 目前没有使用
+        headers = request.headers
 
-    def handle_join_conference(self, conference_id):
-        if conference_id in self.conference_conns:
-            return self.conference_conns[conference_id]
+        find_conf = False
+        conference_id = 0
+        for existing_meeting in meetings:
+            if existing_meeting["conference_name"] == payload["conference_name"]:
+                find_conf = True
+                conference_id = existing_meeting["conference_id"]
+                if existing_meeting["conference_password"] == payload["conference_password"]:
+                    break
+                else:
+                    return {"status": "fail",
+                            "message": "Wrong password."}
+
+        if find_conf:
+            conference_server = conference_servers[conference_id]
+            # 如何检查是否已加入会议，入会用户信息存在哪里？
+            if False:
+                return {"status": "fail",
+                        "message": "Already in conference."}
+            else:
+                # 加入会议
+                pass
         else:
-            return None
+            return {"status": "fail",
+                    "message": "Invalid conference name."}
+        
+        return {"status": "success", 
+                "message": "Join conference successfully."}
 
-    async def handle_quit_conference(self, conference_id, writer):
-        if conference_id in self.conference_conns:
-            conference_server = self.conference_conns[conference_id]
-            # quit_task = asyncio.create_task(conference_server.quit_conference(writer))
-            await conference_server.quit_conference(writer)
+    def start(slef):
+        uvicorn.run(app, host="127.0.0.1", port=8888)
 
-    async def handle_cancel_conference(self, conference_id):
-        if conference_id in self.conference_conns:
-            conference_server = self.conference_conns[conference_id]
-            await conference_server.cancel_conference()
-            del self.conference_conns[conference_id]
 
-    async def request_handler(self, reader, writer):
-        # print('writer in request handler:')
-        # print(writer)
-        while True:
-            data = await reader.read(100)
-            message = data.decode()
-            print('Received: '+message)
-            if message.startswith('create'):
-                conference_id = await self.handle_create_conference()
-                writer.write(f'Conference {conference_id} created'.encode())
-                await writer.drain()
-                print(f'Create a conference with id: {conference_id}')
-            elif message.startswith('join'):
-                conference_id = int(message.split()[1])
-                print(f"Try to join conerence {conference_id}")
-                conference_server = self.handle_join_conference(conference_id)
-                if conference_server:
-                    print(f"Found conference {conference_id} in list")
-                    writer.write(f'Joined conference {conference_id}'.encode())
-                    handleClient_task = asyncio.create_task(conference_server.handle_client(reader, writer))
-                else:
-                    print(f"Cannot found conference {conference_id}")
-                    writer.write(f'Conference {conference_id} not found'.encode())
-            elif message.startswith('quit'):
-                conference_id = int(message.split()[1])
-                await self.handle_quit_conference(conference_id, writer)
-                writer.write(f'Quit conference {conference_id}'.encode())
-                await writer.drain()
-                # print(self.conference_conns[conference_id].running)
-                if not self.conference_conns[conference_id].running:
-                    writer.write(b'Cancel this conference beacause no one still in now')
-                    await writer.drain()
-                    del self.conference_conns[conference_id]
-                else:
-                    writer.write(b'Still have people in this conference')
-                    await writer.drain()
-            elif message.startswith('cancel'):
-                conference_id = int(message.split()[1])
-                await self.handle_cancel_conference(conference_id)
-                writer.write(f'Cancelled conference {conference_id}'.encode())
-        await writer.drain()
-        writer.close()
-        await writer.wait_closed()
+    # async def handle_quit_conference(self, conference_id, writer):
+    #     if conference_id in self.conference_conns:
+    #         conference_server = self.conference_conns[conference_id]
+    #         # quit_task = asyncio.create_task(conference_server.quit_conference(writer))
+    #         await conference_server.quit_conference(writer)
 
-    async def start_main_server(self):
-        server = await asyncio.start_server(self.request_handler, self.server_ip, self.server_port)
-        self.main_server = server
-        async with server:
-            await server.serve_forever()
+    # async def handle_cancel_conference(self, conference_id):
+    #     if conference_id in self.conference_conns:
+    #         conference_server = self.conference_conns[conference_id]
+    #         await conference_server.cancel_conference()
+    #         del self.conference_conns[conference_id]
 
-    def start(self):
-        asyncio.run(self.start_main_server())
+    # async def request_handler(self, reader, writer):
+    #     # print('writer in request handler:')
+    #     # print(writer)
+    #     while True:
+    #         data = await reader.read(100)
+    #         message = data.decode()
+    #         print('Received: '+message)
+    #         if message.startswith('create'):
+    #             conference_id = await self.handle_create_conference()
+    #             writer.write(f'Conference {conference_id} created'.encode())
+    #             await writer.drain()
+    #             print(f'Create a conference with id: {conference_id}')
+    #         elif message.startswith('join'):
+    #             conference_id = int(message.split()[1])
+    #             print(f"Try to join conerence {conference_id}")
+    #             conference_server = self.handle_join_conference(conference_id)
+    #             if conference_server:
+    #                 print(f"Found conference {conference_id} in list")
+    #                 writer.write(f'Joined conference {conference_id}'.encode())
+    #                 handleClient_task = asyncio.create_task(conference_server.handle_client(reader, writer))
+    #             else:
+    #                 print(f"Cannot found conference {conference_id}")
+    #                 writer.write(f'Conference {conference_id} not found'.encode())
+    #         elif message.startswith('quit'):
+    #             conference_id = int(message.split()[1])
+    #             await self.handle_quit_conference(conference_id, writer)
+    #             writer.write(f'Quit conference {conference_id}'.encode())
+    #             await writer.drain()
+    #             # print(self.conference_conns[conference_id].running)
+    #             if not self.conference_conns[conference_id].running:
+    #                 writer.write(b'Cancel this conference beacause no one still in now')
+    #                 await writer.drain()
+    #                 del self.conference_conns[conference_id]
+    #             else:
+    #                 writer.write(b'Still have people in this conference')
+    #                 await writer.drain()
+    #         elif message.startswith('cancel'):
+    #             conference_id = int(message.split()[1])
+    #             await self.handle_cancel_conference(conference_id)
+    #             writer.write(f'Cancelled conference {conference_id}'.encode())
+    #     await writer.drain()
+    #     writer.close()
+    #     await writer.wait_closed()
+
+    # async def start_main_server(self):
+    #     server = await asyncio.start_server(self.request_handler, self.server_ip, self.server_port)
+    #     self.main_server = server
+    #     async with server:
+    #         await server.serve_forever()
+
+    # def start(self):
+    #     asyncio.run(self.start_main_server())
 
 
 if __name__ == '__main__':

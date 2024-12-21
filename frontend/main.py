@@ -7,7 +7,7 @@ from PyQt5.QtGui import QIcon, QColor
 import json
 # from PyQt5.QtGui import QStyleFactory
 
-from PyQt5.QtWidgets import QDialog, QLineEdit, QVBoxLayout, QLabel, QPushButton, QHBoxLayout
+from PyQt5.QtWidgets import QDialog, QLineEdit, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QMessageBox
 
 
 # 创建会议的弹窗
@@ -112,7 +112,7 @@ class CreateMeetingDialog(QDialog):
             "Authorization": "Bearer YOUR_TOKEN"
         }
 
-        response = requests.post("https://server_ip:8888/user/create-meeting", json=payload, headers=headers)
+        response = requests.post("http://127.0.0.1:8888/user/create-meeting", json=payload, headers=headers)
 
         if response.status_code == 200:
             result = response.json()
@@ -122,9 +122,25 @@ class CreateMeetingDialog(QDialog):
                 # 自动加入会议
                 self.join_meeting(conference_name, conference_password)
             else:
+                # TODO：显示错误信息，并将input中已输入的会议名和密码清空
+                self.show_error_message(f"Error: {result.get('message')}")
+                self.clear_input_fields()
                 self.show_message(f"Error: {result.get('message')}")
         else:
             self.show_message("Error: Unable to create meeting.")
+
+    def show_error_message(self, message):
+        # 使用QMessageBox弹窗显示错误信息
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Critical)
+        msg.setWindowTitle("Error")
+        msg.setText(message)
+        msg.exec_()
+
+    def clear_input_fields(self):
+        # 清空输入框中的内容
+        self.conference_name_input.clear()
+        self.conference_password_input.clear()
 
     def show_message(self, message):
         print(message)
@@ -140,7 +156,7 @@ class CreateMeetingDialog(QDialog):
             "Authorization": "Bearer YOUR_TOKEN"
         }
 
-        response = requests.post("https://server_ip:8888/user/join-meeting", json=payload, headers=headers)
+        response = requests.post("http://127.0.0.1:8888/user/join-meeting", json=payload, headers=headers)
 
         if response.status_code == 200:
             result = response.json()
@@ -148,6 +164,8 @@ class CreateMeetingDialog(QDialog):
                 self.show_message("Successfully joined the meeting!")
                 # 在这里你可以建立 WebSocket 或其他连接
             else:
+                self.show_error_message(f"Error: {result.get('message')}")
+                self.clear_input_fields()
                 self.show_message(f"Error: {result.get('message')}")
         else:
             self.show_message("Error: Unable to join meeting.")
@@ -255,7 +273,7 @@ class JoinMeetingDialog(QDialog):
             "Authorization": "Bearer YOUR_TOKEN"
         }
 
-        response = requests.post("https://server_ip:8888/user/join-meeting", json=payload, headers=headers)
+        response = requests.post("http://127.0.0.1:8888/user/join-meeting", json=payload, headers=headers)
 
         if response.status_code == 200:
             result = response.json()
@@ -264,9 +282,24 @@ class JoinMeetingDialog(QDialog):
                 self.show_message("Successfully joined the meeting!")
                 # 在这里你可以建立 WebSocket 或其他连接
             else:
+                self.show_error_message(f"Error: {result.get('message')}")
+                self.clear_input_fields()
                 self.show_message(f"Error: {result.get('message')}")
         else:
             self.show_message("Error: Unable to join meeting.")
+
+    def show_error_message(self, message):
+        # 使用QMessageBox弹窗显示错误信息
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Critical)
+        msg.setWindowTitle("Error")
+        msg.setText(message)
+        msg.exec_()
+
+    def clear_input_fields(self):
+        # 清空输入框中的内容
+        self.conference_name_input.clear()
+        self.conference_password_input.clear()
 
     def show_message(self, message):
         print(message)
@@ -336,7 +369,6 @@ class MainWindow(QWidget):
                 background-color: #0056b3;
             }
         """)
-        self.create_meeting_button.clicked.connect(self.create_meeting)
 
         self.join_meeting_button = QPushButton("Join\nMeeting")
         self.join_meeting_button.setFixedSize(150, 100)
@@ -360,7 +392,6 @@ class MainWindow(QWidget):
                 background-color: #0056b3;
             }
         """)
-        self.join_meeting_button.clicked.connect(self.join_meeting)
 
         # 添加按钮到左侧栏
         left_layout.addWidget(self.logout_button)
@@ -485,37 +516,6 @@ class MainWindow(QWidget):
         for meeting in joined_response["data"]:
             item = f"{meeting['conference_name']} ({meeting['host']}) - {meeting['participants']} participants"
             self.joined_meeting_list.addItem(item)
-
-    def create_meeting(self):
-        # 获取输入的会议名称和密码
-        conference_name = "team_meeting"  # 示例，实际中你可能会从输入框获取数据
-        conference_password = "123"  # 示例，实际中你可能会从输入框获取数据
-
-        payload = {
-            "conference_name": conference_name,
-            "conference_password": conference_password,
-            "host": "john_doe"
-        }
-
-        headers = {
-            "Authorization": "Bearer YOUR_TOKEN"
-        }
-
-        response = requests.post("https://server_ip:8888/user/create-meeting", json=payload, headers=headers)
-
-        if response.status_code == 200:
-            result = response.json()
-            if result.get("status") == "success":
-                self.update_meeting_list()
-                self.show_message("Meeting created successfully!")
-            else:
-                self.show_message(f"Error: {result.get('message')}")
-        else:
-            self.show_message("Error: Unable to create meeting.")
-
-    def join_meeting(self):
-        # 模拟加入会议操作
-        self.show_message("Joining the meeting...")
 
     def logout(self):
         # 实现退出登录操作

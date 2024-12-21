@@ -200,49 +200,6 @@ class App(QWidget):
         else:
             self.password_input.setEchoMode(QLineEdit.Password)  # 隐藏密码
             self.show_password_button.setIcon(QIcon("frontend/img/pswd_hide.png"))  # 更新按钮文本为 "Show"
-    # def __init__(self):
-    #     super().__init__()
-    #     self.setWindowTitle("Login/Register App")
-    #     self.setGeometry(400, 200, 300, 200)
-    #
-    #     self.initUI()
-
-    # def initUI(self):
-    #     # 主布局
-    #     main_layout = QVBoxLayout()
-    #
-    #     # 登录框部分
-    #     self.username_label = QLabel("Username:")
-    #     self.username_input = QLineEdit()
-    #
-    #     self.password_label = QLabel("Password:")
-    #     self.password_input = QLineEdit()
-    #     self.password_input.setEchoMode(QLineEdit.Password)  # 密码输入时隐藏字符
-    #
-    #     # 注册和登录按钮
-    #     self.login_button = QPushButton("Login")
-    #     self.register_button = QPushButton("Register")
-    #     self.exit_button = QPushButton("Exit")
-    #
-    #     # 连接按钮到方法
-    #     self.login_button.clicked.connect(self.login)
-    #     self.register_button.clicked.connect(self.register)
-    #     self.exit_button.clicked.connect(self.exit_app)
-    #
-    #     # 布局添加控件
-    #     main_layout.addWidget(self.username_label)
-    #     main_layout.addWidget(self.username_input)
-    #     main_layout.addWidget(self.password_label)
-    #     main_layout.addWidget(self.password_input)
-    #
-    #     button_layout = QHBoxLayout()
-    #     button_layout.addWidget(self.login_button)
-    #     button_layout.addWidget(self.register_button)
-    #     button_layout.addWidget(self.exit_button)
-    #
-    #     main_layout.addLayout(button_layout)
-    #
-    #     self.setLayout(main_layout)
 
     def register(self):
         url = 'http://127.0.0.1:8888/register'
@@ -260,7 +217,8 @@ class App(QWidget):
             if response.status_code == 200:
                 QMessageBox.information(self, 'Success', 'Registration successful!')
             else:
-                QMessageBox.warning(self, 'Error', f'Registration failed: {response.status_code} {response.text}')
+                self.clear_input_fields()
+                QMessageBox.warning(self, 'Error', f'Message: {response.text}')
         except requests.RequestException as e:
             QMessageBox.critical(self, 'Error', f'An error occurred: {e}')
 
@@ -278,12 +236,22 @@ class App(QWidget):
             print(f"Registering user: {data}")
             response = requests.post(url, json=data)
             if response.status_code == 200:
-                QMessageBox.information(self, 'Success', 'Login successful!')
-                print("Token:", response.json())
+                result = response.json()
+                if result.get("status") == "success":
+                    QMessageBox.information(self, 'Success', 'Login successful!')
+                    print("Token:", response.json())
+                else:
+                    self.clear_input_fields()
+                    QMessageBox.warning(self, 'Error', f'Message: {response.text}')
             else:
-                QMessageBox.warning(self, 'Error', f'Login failed: {response.status_code} {response.text}')
+                print("Error: Unable to login.")
         except requests.RequestException as e:
             QMessageBox.critical(self, 'Error', f'An error occurred: {e}')
+
+    def clear_input_fields(self):
+        # 清空输入框中的内容
+        self.password_input.clear()
+        self.username_input.clear()
 
     def exit_app(self):
         print("Exiting application...")

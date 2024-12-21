@@ -28,6 +28,8 @@ class DBUsers(Base):
     user_id = Column(Integer, primary_key=True, index=True)
     username = Column(String, index=True, unique=True)  # 确保用户名唯一
     password = Column(String, index=True)
+    # ip = Column(String, index=True)
+    # port = Column(Integer, index=True)
 
 
 class User(BaseModel):
@@ -59,14 +61,18 @@ class UserService:
 
     @staticmethod
     def login(request : User, db: Session):
+        print('enter login')
         # 检查用户是否存在
         user = db.query(DBUsers).filter(request.username == DBUsers.username, request.password == DBUsers.password).first()
         if user is None:
-            print("已进入")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="用户或密码错误",
-            )
+            if db.query(DBUsers).filter(request.username == DBUsers.username).first() is None:
+                print("已进入")
+                return {"status": "fail",
+                        "message": "No such User"}
+            else:
+                return {"status": "fail",
+                        "message": "wrong password",}
+        
         # 生成JWT
         access_token_expires = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = jwt.encode({
@@ -75,4 +81,7 @@ class UserService:
         }, SECRET_KEY, algorithm=ALGORITHM)
 
         print(f"生成的Token = {access_token}")
-        return {"username": user.username, "access_token": access_token, "token_type": "bearer"}
+        return {"status": "success",
+                "message": "Login successful.", 
+                "access_token": access_token, 
+                "token_type": "bearer"}
