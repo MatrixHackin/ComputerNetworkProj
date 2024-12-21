@@ -9,7 +9,7 @@ from PyQt5.QtCore import Qt, QProcess
 from PyQt5.QtGui import QIcon
 
 from config import *
-import main
+from main import MainWindow
 
 class App(QWidget):
     def __init__(self):
@@ -241,10 +241,7 @@ class App(QWidget):
                 if result.get("status") == "success":
                     QMessageBox.information(self, 'Success', 'Login successful!')
                     print("Token:", response.json())
-
-                    # 调用 main.py 的 main() 函数
-                    main.main()
-                    # self.exit_app()
+                    self.open_main_window()
                 else:
                     self.clear_input_fields()
                     QMessageBox.warning(self, 'Error', f'Message: {response.text}')
@@ -257,6 +254,11 @@ class App(QWidget):
         # 清空输入框中的内容
         self.password_input.clear()
         self.username_input.clear()
+
+    def open_main_window(self):
+        self.main_window = MainWindow()
+        self.main_window.show()
+        self.close()
 
     def exit_app(self):
         print("Exiting application...")
