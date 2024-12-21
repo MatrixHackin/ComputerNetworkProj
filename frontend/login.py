@@ -1,15 +1,15 @@
 import sys
 import requests
 import hashlib
+import subprocess
 
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLineEdit, QPushButton, QLabel, QHBoxLayout, QMessageBox
-import sys
-import requests
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLineEdit, QPushButton, QLabel, QHBoxLayout
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QProcess
 from PyQt5.QtGui import QIcon
 
 from config import *
+import main
 
 class App(QWidget):
     def __init__(self):
@@ -234,13 +234,17 @@ class App(QWidget):
             "password": password
         }
         try:
-            print(f"Registering user: {data}")
+            print(f"Login user: {data}")
             response = requests.post(url, json=data)
             if response.status_code == 200:
                 result = response.json()
                 if result.get("status") == "success":
                     QMessageBox.information(self, 'Success', 'Login successful!')
                     print("Token:", response.json())
+
+                    # 调用 main.py 的 main() 函数
+                    main.main()
+                    # self.exit_app()
                 else:
                     self.clear_input_fields()
                     QMessageBox.warning(self, 'Error', f'Message: {response.text}')

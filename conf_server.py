@@ -1,7 +1,6 @@
 import asyncio
 from util import *
 
-
 class ConferenceServer:
     def __init__(self):
         self.conference_id = None
@@ -103,6 +102,7 @@ class Meeting(BaseModel):
 conference_servers = {} # on-going ones
 meetings = [] # on-going ones
 confID_count = 0
+clients_ip = []
 
 class MainServer:
     # conference_servers = {}
@@ -167,6 +167,9 @@ class MainServer:
         # 获取请求头, 目前没有使用
         headers = request.headers
 
+        client_ip = request.client.host
+        client_port = request.client.port
+
         find_conf = False
         conference_id = 0
         for existing_meeting in meetings:
@@ -187,6 +190,7 @@ class MainServer:
                         "message": "Already in conference."}
             else:
                 # 加入会议
+                clients_ip.append(client_ip)
                 pass
         else:
             return {"status": "fail",
