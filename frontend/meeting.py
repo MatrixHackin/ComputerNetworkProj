@@ -1,14 +1,10 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QStackedWidget, \
-    QFileDialog, QLineEdit, QTextEdit, QScrollArea, QSpacerItem, QSizePolicy
+from PyQt5.QtWidgets import *
 from PyQt5.QtCore import Qt, QSize
-from PyQt5.QtGui import QPixmap
-from PyQt5.QtGui import QIcon  # 导入 QIcon 用于加载图标
-from PyQt5.QtCore import QSize  # 导入 QSize 用于调整图标大小
+from PyQt5.QtGui import QPixmap, QIcon
 import json
 import time
 import websocket
-from PyQt5.QtWidgets import QLabel, QVBoxLayout, QTextEdit, QLineEdit, QPushButton, QWidget, QFileDialog
 
 
 class MeetingWindow(QWidget):
@@ -16,12 +12,16 @@ class MeetingWindow(QWidget):
         super().__init__()
 
         self.setWindowTitle("Meeting Interface")
+        self.setWindowIcon(QIcon("frontend/img/icon.png"))
         self.setFixedSize(1920, 1080)  # Full screen
 
-        self.audio_enabled = True
-        self.video_enabled = True
-        self.owner_view = True
-        self.speaker_view = False
+        # 状态管理
+        self.audio_enabled = False  # 默认为闭麦
+        self.video_enabled = False  # 默认为关闭摄像头
+        self.speaker_view = False  # 默认为等分模式
+        self.view_toggle_count = 0  # 视图切换计数器
+        self.audio_toggle_count = 0  # 点击计数器
+        self.video_toggle_count = 0  # 点击计数器
 
         self.initUI()
 
@@ -33,11 +33,12 @@ class MeetingWindow(QWidget):
         left_sidebar_widget.setFixedWidth(int(self.width() * 0.074))
 
         # Chat area (right side)
-        chat_area = self.create_chat_area()
+        chat_area = self.create_right_sidebar_chatting()
         chat_area.setFixedWidth(int(self.width() * 0.3))
 
         # Video area (centered in the window)
         video_area = self.create_video_area()
+        video_area.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)  # 自适应大小
 
         # Main Layout
         main_layout.addWidget(left_sidebar_widget)  # Add the widget, not just the layout
@@ -54,189 +55,366 @@ class MeetingWindow(QWidget):
         self.audio_icon_off = QIcon("frontend/img/audio_off_icon.png")  # 静音图标
         self.audio_icon_on = QIcon("frontend/img/audio_on_icon.png")  # 开启麦克风图标
         self.audio_button.setIcon(self.audio_icon_off)  # 默认静音
-        # self.audio_button.setStyleSheet("""
-        #     border: 1px solid black;
-        #     font-size: 20px;
-        #     padding: 0px;  # 去除多余的内边距
-        #     width: 80px;  # 设置按钮宽度
-        #     height: 80px;  # 设置按钮高度
-        #     border-radius: 40px;  # 设置圆角为半径的值，形成圆形按钮
-        #     background-color: #4CAF50;  # 设置背景颜色（可以根据需要调整）
-        # """)
-        self.audio_button.setIconSize(QSize(80, 80))  # 设置图标大小
+        self.audio_button.setIconSize(QSize(40, 40))  # 设置图标大小
         self.audio_button.clicked.connect(self.toggle_audio)
 
         # Video Button with icon (圆角方形按钮)
         self.video_button = QPushButton()
-        # self.video_button.setStyleSheet("""
-        #     border: 1px solid black;
-        #     font-size: 20px;
-        #     padding: 0px;  # 去除多余的内边距
-        #     width: 60px;  # 设置按钮宽度
-        #     height: 60px;  # 设置按钮高度
-        #     border-radius: 15px;  # 设置圆角为15px，形成圆角方形按钮
-        #     background-color: #008CBA;  # 设置背景颜色（可以根据需要调整）
-        # """)
         self.video_icon_off = QIcon("frontend/img/video_off_icon.png")  # 关闭摄像头图标
         self.video_icon_on = QIcon("frontend/img/video_on_icon.png")  # 开启摄像头图标
         self.video_button.setIcon(self.video_icon_off)  # 默认关闭摄像头
-        self.video_button.setIconSize(QSize(80, 80))  # 设置图标大小
+        self.video_button.setIconSize(QSize(40, 40))  # 设置图标大小
         self.video_button.clicked.connect(self.toggle_video)
 
+        # Create the "Exit Meeting" button
+        self.exit_button = QPushButton()  # 设置按钮文本
+        self.exit_button.setIcon(QIcon("frontend/img/exit_icon.png"))  # 退出会议图标
+        self.exit_button.setIconSize(QSize(40, 40))  # 设置图标大小
+        self.exit_button.clicked.connect(self.exit_meeting)  # 点击事件处理函数
+
+        # Create the "Close Meeting" button
+        self.close_button = QPushButton()  # 设置按钮文本
+        self.close_button.setIcon(QIcon("frontend/img/close_icon.png"))  # 关闭会议图标
+        self.close_button.setIconSize(QSize(40, 40))  # 设置图标大小
+        self.close_button.clicked.connect(self.end_meeting)  # 点击事件处理函数
+
+        # 切换模式按钮
+        self.switch_mode_button = QPushButton()
+        self.switch_mode_button.setIcon(QIcon("frontend/img/switch_icon.png"))
+        self.switch_mode_button.setIconSize(QSize(40, 40))
+        self.switch_mode_button.setToolTip("切换演讲者视图模式")
+        self.switch_mode_button.clicked.connect(self.toggle_view_mode)
+
         # Add buttons to the sidebar layout
+        sidebar_layout.addWidget(self.exit_button)
         sidebar_layout.addWidget(self.audio_button)
         sidebar_layout.addWidget(self.video_button)
+        sidebar_layout.addWidget(self.close_button)
+        sidebar_layout.addWidget(self.switch_mode_button)
         sidebar_layout.addStretch()
 
         # Create a QWidget to hold the layout
         sidebar_widget = QWidget()  # Wrap the layout inside a QWidget
         sidebar_widget.setLayout(sidebar_layout)  # Set layout to the widget
 
+        # 样式设置
+        sidebar_widget.setStyleSheet("""
+            QPushButton {
+                background-color: #f6f8fa; /* GitHub 风格的浅灰背景 */
+                border: 1px solid #d0d7de; /* 边框颜色 */
+                border-radius: 8px; /* 圆角 */
+                padding: 10px; /* 内边距 */
+            }
+            QPushButton:hover {
+                background-color: #e1e4e8; /* 悬停时背景变暗 */
+            }
+            QPushButton:pressed {
+                background-color: #d7dce1; /* 点击时背景更暗 */
+            }
+            QPushButton:focus {
+                outline: none; /* 去掉按钮聚焦时的外框 */
+            }
+            QPushButton::icon {
+                margin: 0; /* 确保图标居中对齐 */
+            }
+        """)
+
         return sidebar_widget  # Return the widget
+
+    def create_right_sidebar_chatting(self):
+        """ 创建固定的聊天面板 """
+        # 主布局
+        main_layout = QVBoxLayout()
+
+        # 对话列表（QListWidget 自带滚动功能）
+        self.chat_list = QListWidget()
+        self.chat_list.setFixedHeight(900)
+        self.chat_list.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)  # 平滑滚动
+        self.chat_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # 隐藏水平滚动条
+        main_layout.addWidget(self.chat_list)
+
+        # 底部布局（输入框和按钮）
+        input_container = QWidget()
+        input_layout = QVBoxLayout()
+
+        # 输入框
+        self.text_input = QTextEdit()
+        self.text_input.setPlaceholderText("请输入消息...")
+        self.text_input.setFixedHeight(100)  # 固定高度
+        input_layout.addWidget(self.text_input)
+
+        # 按钮布局
+        button_layout = QHBoxLayout()
+        button_layout.setAlignment(Qt.AlignRight)
+
+        # 上传文件按钮
+        self.upload_button = QPushButton()
+        self.upload_button.setIcon(QIcon("frontend/img/add_icon.png"))
+        self.upload_button.setToolTip("上传文件")
+        self.upload_button.setFixedSize(40, 40)
+        self.upload_button.clicked.connect(self.upload_file)
+        button_layout.addWidget(self.upload_button)
+
+        # 发送按钮
+        self.send_button = QPushButton()
+        self.send_button.setIcon(QIcon("frontend/img/send_icon.png"))
+        self.send_button.setToolTip("发送消息")
+        self.send_button.setFixedSize(40, 40)
+        self.send_button.clicked.connect(self.send_message)
+        button_layout.addWidget(self.send_button)
+
+        # 将按钮布局添加到底部布局
+        input_layout.addLayout(button_layout)
+        input_container.setLayout(input_layout)
+        main_layout.addWidget(input_container)
+
+        # 设置主界面中的聊天部分
+        chat_widget = QWidget()
+        chat_widget.setLayout(main_layout)
+
+        # 样式设置
+        chat_widget.setStyleSheet("""
+            QWidget {
+                background-color: #f6f8fa; 
+                border: 1px solid #d0d7de; 
+                border-radius: 6px; 
+            }
+        """)
+        self.chat_list.setStyleSheet("""
+            QListWidget {
+                background-color: #ffffff; /* 白色背景 */
+                border: none; /* 无边框 */
+                padding: 10px; /* 内边距 */
+                font-size: 14px;
+                color: #24292e; /* 深灰色字体 */
+            }
+            QListWidget::item {
+                margin: 5px 0; /* 项目之间的间距 */
+                padding: 10px;
+                background-color: #f6f8fa; /* 条目背景 */
+                border: 1px solid #d0d7de;
+                border-radius: 4px;
+            }
+        """)
+        self.text_input.setStyleSheet("""
+            QTextEdit {
+                background-color: #ffffff;
+                border: 1px solid #d0d7de;
+                border-radius: 6px;
+                padding: 10px;
+                font-size: 20px;
+                color: #24292e;
+                font-family: Arial, sans-serif;
+                font-weight: bold;
+            }
+            QTextEdit:focus {
+                border-color: #0366d6; /* 聚焦时的边框颜色 */
+            }
+        """)
+        self.upload_button.setStyleSheet("""
+            QPushButton {
+                border: 1px solid #d0d7de;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                background-color: #c8c8c8; /* Hover 效果 */
+            }
+        """)
+        self.send_button.setStyleSheet("""
+            QPushButton {
+                border: 1px solid #1a7f37;
+                color: #ffffff;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                background-color: #c8c8c8; /* Hover 效果 */
+            }
+        """)
+
+        return chat_widget
+
+    def send_message(self):
+        """ 发送消息到对话框 """
+        message = self.text_input.toPlainText()
+        if message:
+            self.chat_list.addItem(f"你: {message}")
+            self.text_input.clear()
+
+    def upload_file(self):
+        """ 上传文件并显示文件名 """
+        file_name, _ = QFileDialog.getOpenFileName(self, "选择文件", "", "所有文件 (*)")
+        if file_name:
+            self.chat_list.addItem(f"你上传了文件: {file_name}")
+
+    def end_meeting(self):
+        # 创建一个消息框，询问是否确定要结束会议
+        reply = QMessageBox.question(self, '结束会议', '确定要结束会议吗？此操作将结束所有与会者的连接。',
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+
+        # 如果用户选择“是”，执行结束会议操作
+        if reply == QMessageBox.Yes:
+            print("结束会议")  # 在此可以执行结束会议的逻辑
+            # 你可以在这里加入与服务器通信的代码，通知所有与会者会议已经结束
+            self.close()  # 关闭当前窗口，或者做其他清理工作
+        else:
+            print("取消结束会议")  # 如果用户选择“否”，可以在这里做一些处理
+
+    def exit_meeting(self):
+        # 创建一个消息框，询问是否确认退出会议
+        reply = QMessageBox.question(self, '退出会议', '确定要退出会议吗？',
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+
+        # 如果用户选择“是”，执行退出操作
+        if reply == QMessageBox.Yes:
+            print("退出会议")  # 你可以根据实际需求在这里实现退出逻辑
+            self.close()  # 关闭当前窗口
+        else:
+            print("取消退出会议")  # 如果用户选择“否”，可以在这里做一些处理
 
     # Toggle Audio (Mute/Unmute)
     def toggle_audio(self):
-        if self.audio_enabled:
-            self.audio_button.setIcon(self.audio_icon_off)  # 设置静音图标
-            self.audio_enabled = False
-        else:
+        """ 切换音频状态 """
+        self.audio_toggle_count += 1  # 每次点击递增计数器
+
+        if self.audio_toggle_count % 2 == 1:  # 单数次点击，开麦
             self.audio_button.setIcon(self.audio_icon_on)  # 设置开麦图标
             self.audio_enabled = True
+        else:  # 双数次点击，闭麦
+            self.audio_button.setIcon(self.audio_icon_off)  # 设置静音图标
+            self.audio_enabled = False
 
-    # Toggle Video (Mute/Unmute)
     def toggle_video(self):
-        if self.video_enabled:
-            self.video_button.setIcon(self.video_icon_off)  # 设置关闭摄像头图标
-            self.video_enabled = False
-        else:
+        """ 切换视频状态 """
+        self.video_toggle_count += 1  # 每次点击递增计数器
+
+        if self.video_toggle_count % 2 == 1:  # 单数次点击，开启摄像头
             self.video_button.setIcon(self.video_icon_on)  # 设置开启摄像头图标
             self.video_enabled = True
+        else:  # 双数次点击，关闭摄像头
+            self.video_button.setIcon(self.video_icon_off)  # 设置关闭摄像头图标
+            self.video_enabled = False
 
     def create_video_area(self):
-        video_area = QWidget()
-        video_area_layout = QVBoxLayout()
+        """创建视频区域"""
+        self.video_area = QWidget()
+        self.video_layout = QVBoxLayout()
+        self.video_area.setLayout(self.video_layout)
 
-        # Placeholder image for video area
-        placeholder_image = QLabel()
-        placeholder_image.setPixmap(QPixmap("frontend/img/placeholder.png").scaled(800, 600, Qt.KeepAspectRatio))
-        placeholder_image.setAlignment(Qt.AlignCenter)
+        # 写死 3 个参会者
+        self.participants = [
+            self.create_participant_label("参会者 1"),
+            self.create_participant_label("参会者 2"),
+            self.create_participant_label("参会者 3"),
+        ]
 
-        video_area_layout.addWidget(placeholder_image)
+        # 模拟参会者占位符
+        self.create_mock_participants(10)
 
-        video_area.setLayout(video_area_layout)
-        video_area.setFixedSize(800, 600)
+        # 默认演讲者模式
+        self.set_speaker_mode()
 
-        return video_area
+        self.video_area.setStyleSheet("background-color: #ffffff;")
+        return self.video_area
 
-    def create_chat_area(self):
-        chat_layout = QVBoxLayout()
-
-        # 显示 WebSocket 地址
-        self.ws_label = QLabel("wss://server_ip:conference_port:/chat")
-        self.ws_label.setAlignment(Qt.AlignCenter)
-        self.ws_label.setStyleSheet("font-size: 20px; padding: 10px;")
-        chat_layout.addWidget(self.ws_label)
-
-        # Chat Display
-        self.chat_display = QTextEdit()
-        self.chat_display.setReadOnly(True)
-        self.chat_display.setPlaceholderText("Chat Messages...")
-        self.chat_display.setStyleSheet("font-size: 20px; padding: 10px;")
-        chat_layout.addWidget(self.chat_display)
-
-        # Message input field
-        self.message_input = QLineEdit()
-        self.message_input.setPlaceholderText("Enter your message...")
-        self.message_input.setStyleSheet("font-size: 20px; padding: 10px;")
-        chat_layout.addWidget(self.message_input)
-
-        # Send Message Button
-        self.send_button = QPushButton("Send")
-        self.send_button.setStyleSheet("font-size: 20px; padding: 10px;")
-        self.send_button.clicked.connect(self.send_message)
-        chat_layout.addWidget(self.send_button)
-
-        # File upload
-        file_button = QPushButton("Send File")
-        file_button.setStyleSheet("font-size: 20px; padding: 10px;")
-        file_button.clicked.connect(self.send_file)
-        chat_layout.addWidget(file_button)
-
-        chat_layout.addStretch()
-
-        # Create a QWidget to hold the layout
-        chat_area_widget = QWidget()
-        chat_area_widget.setLayout(chat_layout)
-
-        return chat_area_widget
-
-    def send_message(self):
-        message_text = self.message_input.text()
-        if message_text:
-            timestamp = time.time()
-            message_data = {
-                "sender": "ALICE",  # Replace with actual sender name
-                "message": message_text,
-                "timestamp": timestamp
+    def create_participant_label(self, name):
+        """创建参会者占位符"""
+        label = QLabel()
+        label.setFixedSize(150, 100)
+        label.setAlignment(Qt.AlignCenter)
+        label.setStyleSheet("""
+            QLabel {
+                background-color: #ffffff;
+                border: 1px solid #d0d7de;
+                border-radius: 6px;
+                color: #0366d6;
+                font-size: 12px;
             }
-            if self.ws:
-                self.ws.send(json.dumps(message_data))  # Send message to WebSocket server
-            self.chat_display.append(f"Me: {message_text}")  # Display the message in the chat area
-            self.message_input.clear()  # Clear input field
+        """)
+        label.setText(name)
+        return label
 
-    def connect_to_websocket(self, url):
-        """ Connect to the WebSocket server. """
+    def create_mock_participants(self, count):
+        """创建参会者占位符"""
+        for i in range(count):
+            label = QLabel()
+            label.setFixedSize(150, 100)
+            label.setAlignment(Qt.AlignCenter)
+            label.setStyleSheet("""
+                QLabel {
+                    background-color: #ffffff;
+                    border: 1px solid #d0d7de;
+                    border-radius: 6px;
+                    color: #0366d6;
+                    font-size: 12px;
+                }
+            """)
+            label.setText(f"参会者 {i + 1}")
+            self.participants.append(label)
 
-        def on_message(ws, message):
-            message_data = json.loads(message)
-            sender = message_data.get("sender", "Unknown")
-            message = message_data.get("message", "")
-            self.chat_display.append(f"{sender}: {message}")  # Display the incoming message
+    def set_speaker_mode(self):
+        ## 写死 3 个参会者,链接后端后删除这部分代码
+        self.participants = [
+            self.create_participant_label("参会者 1"),
+            self.create_participant_label("参会者 2"),
+            self.create_participant_label("参会者 3"),
+        ]
+        ##
+        """设置演讲者模式"""
+        self.clear_video_layout()
 
-        def on_error(ws, error):
-            print(f"WebSocket error: {error}")
+        # 演讲者
+        speaker_view = self.participants[0]
+        speaker_view.setFixedSize(1000, 667)
+        self.video_layout.addWidget(speaker_view, alignment=Qt.AlignCenter)
 
-        def on_close(ws, close_status_code, close_msg):
-            print("WebSocket closed")
+        # 小视图（最多显示5个）
+        small_views_layout = QHBoxLayout()
+        max_small_views = 5  # 最多显示5个参会者
+        for i, participant in enumerate(self.participants[1:]):  # 跳过演讲者本身
+            if i >= max_small_views:  # 超过5个则忽略
+                break
+            participant.setFixedSize(150, 100)  # 小视图固定大小
+            small_views_layout.addWidget(participant)
 
-        def on_open(ws):
-            print("WebSocket connection established")
+        self.video_layout.addLayout(small_views_layout)
 
-        self.ws = websocket.WebSocketApp(
-            url,
-            on_message=on_message,
-            on_error=on_error,
-            on_close=on_close
-        )
-        self.ws.on_open = on_open
-        self.ws.run_forever()  # Block the main thread to maintain the WebSocket connection
-
-    def send_file(self):
-        """ Handle file sending logic. """
-        file_dialog = QFileDialog(self)
-        file_dialog.setFileMode(QFileDialog.ExistingFiles)
-        file_dialog.setNameFilter("Images (*.png *.jpg *.bmp *.jpeg);;Text Files (*.txt);;All Files (*)")
-        if file_dialog.exec_():
-            files = file_dialog.selectedFiles()
-            print(f"Sending file: {files[0]}")  # Implement the actual file sending logic here
-            # If you need to send the file over the WebSocket, you could use `self.ws.send()` to send the file
-            # Example: ws.send(files[0]) or send the file's content as a binary
+    def set_equal_mode(self):
+        ## 写死 3 个参会者,链接后端后删除这部分代码
+        self.participants = [
+            self.create_participant_label("参会者 1"),
+            self.create_participant_label("参会者 2"),
+            self.create_participant_label("参会者 3"),
+        ]
+        ##
 
 
-    def update_video_area(self):
-        if self.audio_enabled:
-            if self.speaker_view:
-                # Replace the placeholder image with speaker's view
-                self.show_speaker_view()
-            else:
-                # Show the owner's view if no one is speaking
-                self.show_owner_view()
+        """设置等分模式"""
+        self.clear_video_layout()
 
-    def show_owner_view(self):
-        print("Showing owner view")
+        grid_layout = QGridLayout()
+        cols = 5
+        for index, participant in enumerate(self.participants):
+            participant.setFixedSize(150, 100)
+            grid_layout.addWidget(participant, index // cols, index % cols)
+        self.video_layout.addLayout(grid_layout)
 
-    def show_speaker_view(self):
-        print("Showing speaker's view")
+    def toggle_view_mode(self):
+        """切换视图模式（单数次为等分模式，双数次为演讲者模式）"""
+        self.view_toggle_count += 1  # 每次点击递增计数器
+
+        if self.view_toggle_count % 2 == 1:  # 单数次点击：等分模式
+            self.set_equal_mode()
+        else:  # 双数次点击：演讲者模式
+            self.set_speaker_mode()
+
+    def clear_video_layout(self):
+        """清空视频布局"""
+        while self.video_layout.count():
+            child = self.video_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+
 
 
 if __name__ == '__main__':
