@@ -1,2 +1,0 @@
-# NetworkProj
-my ver
