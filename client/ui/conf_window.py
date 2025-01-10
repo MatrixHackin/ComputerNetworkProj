@@ -1,10 +1,13 @@
+import base64
 import sys
 from datetime import datetime
 
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import Qt, QSize, pyqtSignal, QThread, QTimer
 from PyQt5.QtGui import QPixmap, QIcon, QImage
+import pyaudio
 from client.fuction.video import VideoStreamThread
+from client.fuction.audio import AudioStreamThread
 import cv2
 import websocket
 import websockets
@@ -12,20 +15,23 @@ from client.config import *
 import asyncio
 import requests
 import threading
+import numpy as np
+from PIL import Image
+import io
 
 
 class MeetingWindow(QWidget):
     # 定义一个信号来更新 UI
     message_received = pyqtSignal(str)
 
-    def __init__(self,conference_id,user_id):
+    def __init__(self, conference_id, user_id):
         super().__init__()
-        self.conference_id=conference_id
-        self.user_id=user_id
+        self.conference_id = conference_id
+        self.user_id = user_id
         # self.conference_id=1
         # self.user_id=1
 
-        self.setWindowTitle("Meeting Interface")
+        self.setWindowTitle(f"Meeting Room {conference_id}")
         self.setWindowIcon(QIcon("client/ui/resources/icon.png"))
         self.setFixedSize(1920, 1080)  # Full screen
 
@@ -40,12 +46,18 @@ class MeetingWindow(QWidget):
 
         self.capture = None  # 摄像头捕获对象
         self.video_thread = None
+        self.audio_thread = None
         self.user_video_label = QLabel()  # 当前用户视频的显示区域
         self.timer = QTimer()
+        self.video_dict = dict()  # {user_id: show_label_id}
+        self.audio_output = pyaudio.PyAudio().open(format=pyaudio.paInt16, channels=1, rate=44100, output=True,
+                                                   frames_per_buffer=1024)
 
         self.initUI()
         self.timer.timeout.connect(self.update_camera_frame)  # 定时器更新摄像头画面
-        self.ws = None
+        self.timer.start(100)  # 每100毫秒（0.1秒）更新一次画面
+        self.video_msg_ws = None
+        self.audio_ws = None
         self.connect()
 
     def initUI(self):
@@ -71,15 +83,23 @@ class MeetingWindow(QWidget):
         self.setLayout(main_layout)
 
     def connect(self):
-        url = f"ws://{SERVER_IP}:{MAIN_SERVER_PORT}/ws/{self.conference_id}/{self.user_id}"
-        self.ws = websocket.create_connection(url)
+        url1 = f"ws://{SERVER_IP}:{MAIN_SERVER_PORT}/ws/{self.conference_id}/{self.user_id}/video_msg"
+        url2 = f"ws://{SERVER_IP}:{MAIN_SERVER_PORT}/ws/{self.conference_id}/{self.user_id}/audio"
+        self.video_msg_ws = websocket.create_connection(url1)
+        self.audio_ws = websocket.create_connection(url2)
         # 创建视频流线程
-        self.video_thread = VideoStreamThread(self.ws)
+        self.video_thread = VideoStreamThread(self.video_msg_ws)
         self.video_thread.start()
+        # 创建音频流线程
+        self.audio_thread = AudioStreamThread(self.audio_ws)
+        self.audio_thread.start()
         # 启动后台线程来监听服务器消息
-        listen_thread = threading.Thread(target=self.listen_for_messages)
-        listen_thread.daemon = True  # 后台线程，当主线程结束时自动结束
-        listen_thread.start()
+        listen_thread1 = threading.Thread(target=self.listen_for_video_msg)
+        listen_thread1.daemon = True  # 后台线程，当主线程结束时自动结束
+        listen_thread1.start()
+        listen_thread2 = threading.Thread(target=self.listen_for_audio)
+        listen_thread2.daemon = True  # 后台线程，当主线程结束时自动结束
+        listen_thread2.start()
 
     def create_left_sidebar(self):
         sidebar_layout = QVBoxLayout()
@@ -214,12 +234,13 @@ class MeetingWindow(QWidget):
                 border-radius: 6px; 
             }
         """)
+        self.chat_list.setFixedHeight(700)
         self.chat_list.setStyleSheet("""
             QListWidget {
                 background-color: #ffffff; /* 白色背景 */
                 border: none; /* 无边框 */
                 padding: 10px; /* 内边距 */
-                font-size: 14px;
+                font-size: 18px;
                 color: #24292e; /* 深灰色字体 */
             }
             QListWidget::item {
@@ -228,6 +249,8 @@ class MeetingWindow(QWidget):
                 background-color: #f6f8fa; /* 条目背景 */
                 border: 1px solid #d0d7de;
                 border-radius: 4px;
+                white-space: normal; /* 启用换行 */
+                word-wrap: break-word; /* 允许长单词换行 */
             }
         """)
         self.text_input.setStyleSheet("""
@@ -273,17 +296,99 @@ class MeetingWindow(QWidget):
         time = datetime.now()
         if message:
             self.chat_list.addItem(f"你: [{time}] {message}")
-            self.ws.send(f"broadcast:[{time}] {message}")
+            self.video_msg_ws.send(f"broadcast:[{time}] {message}")
             self.text_input.clear()
 
-    def listen_for_messages(self):
+    def listen_for_video_msg(self):
         """ 在后台线程中监听 WebSocket 消息 """
         while True:
             try:
-                message = self.ws.recv() # 接收来自服务器的消息
+                message = self.video_msg_ws.recv()  # 接收来自服务器的消息
                 if message:
-                    print(message)
-                    self.chat_list.addItem(f"{message}")
+                    print("receive a message")
+                    if message.startswith("msg:"):
+                        print("receive a msg")
+                        self.chat_list.addItem(message[len("msg:"):])
+                    elif message.startswith("video:"):
+                        datas = message.split(":")
+                        user_id = datas[1]
+                        print(f"user_id = {user_id}")
+                        data = datas[2]
+                        print(f"receive a video from {user_id}")
+                        show_id = -1
+                        if user_id in self.video_dict.keys():
+                            show_id = self.video_dict[user_id]
+                        else:
+                            show_id = len(self.video_dict) + 1
+                            self.video_dict[user_id] = show_id
+                        print(show_id)
+                        # data = data.encode('utf-8')
+                        # 解码 base64 字符串为字节流
+                        frame_data = base64.b64decode(data)
+                        np_arr = np.frombuffer(frame_data, np.uint8)  # 使用 OpenCV 解码字节数据为图像
+                        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)  # 读取为彩色图像
+                        if frame is None:
+                            print("Error: Failed to decode frame.")
+                            return None  # 将 OpenCV 图像（BGR 格式）转换为 QImage（RGB 格式）
+                        height, width, channels = frame.shape
+                        bytes_per_line = channels * width
+                        q_img = QImage(frame.data, width, height, bytes_per_line, QImage.Format_RGB888)
+                        print("transform to QImage")
+                        # 将QImage转换为QPixmap，并显示在QLabel上
+                        pixmap = QPixmap.fromImage(q_img)
+                        # 获取 QLabel 的大小
+                        label_width = self.participants[show_id].width()
+                        label_height = self.participants[show_id].height()
+                        # 将 QPixmap 缩放到 QLabel 的大小，保持比例
+                        scaled_pixmap = pixmap.scaled(label_width, label_height, Qt.KeepAspectRatio)
+                        self.participants[show_id].setPixmap(scaled_pixmap)
+                        self.participants[show_id].resize(pixmap.width(), pixmap.height())
+                        self.participants[show_id].show()
+                    elif message.startswith("video:off"):
+                        print(message)
+                        user_id = message[len("video:off:"):]
+                        print(f"user {user_id} close the video")
+                        show_id = self.video_dict.pop(user_id, None)
+                        if show_id is not None:
+                            self.participants[show_id].clear()
+                    elif message.startswith("cancel"):
+                        print("The conference is canceled")
+                        if self.video_thread.video_enabled:
+                            print("mark1")
+                            self.video_thread.video_enabled = False
+                            self.video_thread.capture.release()
+                            self.video_thread.capture = None
+                        if self.audio_thread.audio_enabled:
+                            print("mark2")
+                            self.audio_thread.audio_enabled = False
+                            self.audio_thread.stream.stop_stream()
+                            print("mark3")
+                            self.audio_thread.stop_stream = None
+                        #print("mark4")
+                        self.close()
+                    else:
+                        print("Unknown message")
+            except Exception as e:
+                print(f"Error listening for messages: {e}")
+                break
+
+    def listen_for_audio(self):
+        """ 在后台线程中监听 WebSocket 消息 """
+        while True:
+            try:
+                message = self.audio_ws.recv()  # 接收来自服务器的消息
+                if message:
+                    print("receive a message")
+                    if message.startswith("audio:"):
+                        datas = message.split(":")
+                        user_id = datas[1]
+                        print(f"user_id = {user_id}")
+                        data = datas[2]
+                        print(f"receive a audio from {user_id}")
+                        frame_data = base64.b64decode(data)
+                        self.audio_output.write(frame_data)
+                    else:
+                        print("Unknown message")
             except Exception as e:
                 print(f"Error listening for messages: {e}")
                 break
@@ -301,20 +406,72 @@ class MeetingWindow(QWidget):
 
         # 如果用户选择“是”，执行结束会议操作
         if reply == QMessageBox.Yes:
-            print("结束会议")  # 在此可以执行结束会议的逻辑
             # 你可以在这里加入与服务器通信的代码，通知所有与会者会议已经结束
-            self.close()  # 关闭当前窗口，或者做其他清理工作
+            url = f'http://{SERVER_IP}:{MAIN_SERVER_PORT}/user/cancel-meeting'
+            data = {
+                "user_id": self.user_id,
+                "conference_id": self.conference_id
+            }
+            try:
+                response = requests.post(url, json=data)
+                if response.json()["status"] == "success":
+                    print("markhhh")
+                    if self.video_thread.video_enabled:
+                        self.video_thread.video_enabled = False
+                        self.video_thread.capture.release()
+                        self.video_thread.capture = None
+                    if self.audio_thread.audio_enabled:
+                        self.audio_thread.audio_enabled = False
+                        self.audio_thread.stream.stop_stream()
+                        #self.audio_thread.stream = None
+                    print("结束会议成功")
+                    self.close()  # 关闭当前窗口，或者做其他清理工作
+                else:
+                    QMessageBox.warning(self, 'Error', f'Message: {response.json()["message"]}')
+                    print("结束会议失败")
+            except Exception as e:
+                print(f"Error quitting meeting: {e}")
         else:
             print("取消结束会议")  # 如果用户选择“否”，可以在这里做一些处理
 
     def exit_meeting(self):
         # 创建一个消息框，询问是否确认退出会议
-        reply = QMessageBox.question(self, '退出会议', '确定要退出会议吗？',QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        reply = QMessageBox.question(self, '退出会议', '确定要退出会议吗？', QMessageBox.Yes | QMessageBox.No,
+                                     QMessageBox.No)
 
         # 如果用户选择“是”，执行退出操作
         if reply == QMessageBox.Yes:
-            print("退出会议")  # 你可以根据实际需求在这里实现退出逻辑
-            self.close()  # 关闭当前窗口
+            # if self.video_thread.capture != None:
+            #     self.video_thread.video_enabled = False
+            #     self.video_thread.capture.release()
+            #     self.video_thread.capture = None
+            # if self.audio_thread.stream != None:
+            #     self.audio_thread.audio_enabled = False
+            #     self.audio_thread.stream.stop_stream()
+            #     self.audio_thread.stop_stream = None
+
+            if self.video_thread.video_enabled:
+                self.video_thread.video_enabled = False
+                self.video_thread.capture.release()
+                self.video_thread.capture = None
+            if self.audio_thread.audio_enabled:
+                self.audio_thread.audio_enabled = False
+                self.audio_thread.stream.stop_stream()
+                self.audio_thread.stop_stream = None
+            url = f'http://{SERVER_IP}:{MAIN_SERVER_PORT}/user/quit-meeting'
+            data = {
+                "user_id": self.user_id,
+                "conference_id": self.conference_id
+            }
+            try:
+                response = requests.post(url, json=data)
+                if response.json()["status"] == "success":
+                    print("退出会议成功")
+                    self.close()  # 关闭当前窗口
+                else:
+                    print("退出会议失败")
+            except Exception as e:
+                print(f"Error quitting meeting: {e}")
         else:
             print("取消退出会议")  # 如果用户选择“否”，可以在这里做一些处理
 
@@ -330,6 +487,9 @@ class MeetingWindow(QWidget):
             self.audio_button.setIcon(self.audio_icon_off)  # 设置静音图标
             self.audio_enabled = False
 
+        # 启动或关闭音频流
+        self.audio_thread.toggle_audio(self.audio_enabled)
+
     def toggle_video(self):
         """ 切换视频状态 """
         self.video_toggle_count += 1  # 每次点击递增计数器
@@ -340,14 +500,17 @@ class MeetingWindow(QWidget):
         else:  # 双数次点击，关闭摄像头
             self.video_button.setIcon(self.video_icon_off)  # 设置关闭摄像头图标
             self.video_enabled = False
+            # print("send video off")
+            # self.ws.send("video:off")
 
         # 启动或关闭视频流
         self.video_thread.toggle_video(self.video_enabled)
 
     def update_camera_frame(self):
         """ 捕获并更新视频帧 """
-        if self.video_enabled:
-            ret, frame = self.capture.read()  # 捕获一帧
+        if self.video_thread.video_enabled:
+            # print("update camera image")
+            ret, frame = self.video_thread.capture.read()  # 捕获一帧
             if not ret:
                 print("Error: Failed to capture image.")
                 return
@@ -361,6 +524,8 @@ class MeetingWindow(QWidget):
             self.participants[0].setPixmap(pixmap)
             self.participants[0].resize(pixmap.width(), pixmap.height())
             self.participants[0].show()
+        else:
+            self.participants[0].clear()
 
     def create_video_area(self):
         """创建视频区域"""
@@ -374,8 +539,7 @@ class MeetingWindow(QWidget):
             self.create_participant_label("参会者 2"),
             self.create_participant_label("参会者 3"),
         ]
-        for participant in self.participants:
-            self.video_layout.addWidget(participant)
+
         # 模拟参会者占位符
         self.create_mock_participants(10)
 
@@ -433,16 +597,16 @@ class MeetingWindow(QWidget):
 
         # 演讲者
         speaker_view = self.participants[0]
-        speaker_view.setFixedSize(1000, 667)
+        speaker_view.setFixedSize(700, 500)
         self.video_layout.addWidget(speaker_view, alignment=Qt.AlignCenter)
 
         # 小视图（最多显示5个）
         small_views_layout = QHBoxLayout()
-        max_small_views = 5  # 最多显示5个参会者
+        max_small_views = 3  # 最多显示5个参会者
         for i, participant in enumerate(self.participants[1:]):  # 跳过演讲者本身
             if i >= max_small_views:  # 超过5个则忽略
                 break
-            participant.setFixedSize(150, 100)  # 小视图固定大小
+            participant.setFixedSize(350, 250)  # 小视图固定大小
             small_views_layout.addWidget(participant)
 
         self.video_layout.addLayout(small_views_layout)
@@ -456,12 +620,11 @@ class MeetingWindow(QWidget):
         ]
         ##
 
-
         """设置等分模式"""
         self.clear_video_layout()
 
         grid_layout = QGridLayout()
-        cols = 5
+        cols = 3
         for index, participant in enumerate(self.participants):
             participant.setFixedSize(150, 100)
             grid_layout.addWidget(participant, index // cols, index % cols)
@@ -486,7 +649,7 @@ class MeetingWindow(QWidget):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    window = MeetingWindow(1,2)
+    window = MeetingWindow(1, 2)
 
     window.show()
     sys.exit(app.exec_())

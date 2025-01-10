@@ -179,6 +179,7 @@ class CreateMeetingDialog(QDialog):
         else:
             self.show_message("Error: Unable to join meeting.")
 
+
 # 加入会议的弹窗
 class JoinMeetingDialog(QDialog):
     # 定义信号，用于通知主窗口加入会议成功
@@ -307,6 +308,9 @@ class JoinMeetingDialog(QDialog):
                 self.show_message(f"Error: {result.get('message')}")
         else:
             self.show_message("Error: Unable to join meeting.")
+            self.conference_name_input.clear()
+            self.conference_password_input.clear()
+            QMessageBox.warning(self, 'Error', 'Unable to join meeting.')
 
 
 
@@ -338,7 +342,14 @@ class MainWindow(QWidget):
         user_id = data
         super().__init__()
 
-        # 设置窗口标题、图标和大小
+        # 确保 asyncio 事件循环有效
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            asyncio.set_event_loop(asyncio.new_event_loop())
+
+        # 启动 WebSocket 连接
+        asyncio.ensure_future(self.connect_to_server())
+
         self.setWindowTitle(f"Main Page - User ID: {user_id}")
         self.setWindowIcon(QIcon("ui/resources/icon.png"))
         self.setGeometry(900, 500, 500, 500)  # 调整窗口大小
@@ -501,8 +512,23 @@ class MainWindow(QWidget):
         # 设置主窗口的布局
         self.setLayout(main_layout)
 
+    async def connect_to_server(self):
+        print("Connecting to server...")
+        # 连接到服务器
+        url=f"ws://{SERVER_IP}:{MAIN_SERVER_PORT}/wsconnect"
+        try:
+            async with websockets.connect(url) as websocket:
+                while True:
+                    message = await websocket.recv()
+                    if message == "update":
+                        self.update_meeting_list()
+        except Exception as e:
+            print(e)
+
+
     def update_meeting_list(self):
         # 从服务器获取可加入的会议列表
+        print(user_id)
         response_self = requests.get(f"http://{SERVER_IP}:{MAIN_SERVER_PORT}/user/{user_id}/canjoin-meeting-list")
         if response_self.status_code != 200:
             self.show_message("Error: Unable to fetch meeting list.")

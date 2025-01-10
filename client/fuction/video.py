@@ -19,14 +19,7 @@ class VideoStreamThread(QThread):
         self.video_enabled = video_enabled
         if self.video_enabled and self.capture is None:
             # 开启视频流时初始化摄像头
-            self.capture = cv2.VideoCapture(1)
-
-            while True:
-                ret, frame = self.capture.read()
-                if not ret:
-                    print("摄像头无法打开！")
-                    break
-                cv2.imshow("Capture", frame)
+            self.capture = cv2.VideoCapture(0)
 
             if not self.capture.isOpened():
                 print("Error: Could not open video camera.")
@@ -47,7 +40,7 @@ class VideoStreamThread(QThread):
                     break
                 # 转为JPEG格式
                 _, buffer = cv2.imencode('.jpg', frame)
-                jpg_as_text = base64.b64encode(buffer).decode('utf-8')
+                jpg_as_text = "video:" + base64.b64encode(buffer).decode('utf-8')
 
                 # 发送视频帧到服务器
                 self.ws.send(jpg_as_text)
